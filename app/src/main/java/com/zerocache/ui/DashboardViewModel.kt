@@ -120,6 +120,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 strategy = when (it.strategy) {
                     ClearStrategy.NoRoot -> ClearStrategy.Root
                     ClearStrategy.Root -> ClearStrategy.NoRoot
+                    ClearStrategy.DirectApi -> ClearStrategy.NoRoot
                 }
             )
         }
@@ -191,7 +192,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             _state.update { it.copy(isClearing = true) }
             val result = when (_state.value.strategy) {
                 ClearStrategy.Root -> engine.clearCacheRoot(item)
-                ClearStrategy.NoRoot -> engine.clearCacheNoRoot(item)
+                ClearStrategy.NoRoot -> {
+                    // Try direct API first, fallback to accessibility
+                    val directResult = engine.clearCacheDirect(item)
+                    if (directResult is ClearResult.Success) {
+                        directResult
+                    } else {
+                        engine.clearCacheNoRoot(item)
+                    }
+                }
+                ClearStrategy.DirectApi -> engine.clearCacheDirect(item)
             }
             val newApps = withContext(Dispatchers.IO) { scanner.scan() }
             val newTotal = newApps.sumOf { it.cacheSizeBytes }

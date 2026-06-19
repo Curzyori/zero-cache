@@ -1,8 +1,6 @@
 package com.zerocache.data
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import com.zerocache.service.ZeroCacheAccessibilityService
@@ -11,6 +9,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Outcome of a single clear-cache attempt.
@@ -28,6 +31,7 @@ sealed class ClearResult {
 sealed class ClearStrategy {
     data object Root : ClearStrategy()
     data object NoRoot : ClearStrategy()
+    data object DirectApi : ClearStrategy()  // Hidden API via reflection
 }
 
 class ClearEngine(
@@ -35,6 +39,83 @@ class ClearEngine(
     private val scanner: AppCacheScanner
 ) {
     private val tag = "ClearEngine"
+
+    /**
+     * Try to clear cache directly using hidden PackageManager API via reflection.
+     * This works on many Android versions (especially Android 6-10) without root.
+     * On newer Android versions, this may be blocked due to hidden API restrictions.
+     */
+    suspend fun clearCacheDirect(info: AppCacheInfo): ClearResult = withContext(Dispatchers.IO) {
+        try {
+            val pm = context.packageManager
+            val pmClass = pm.javaClass
+            
+            // Find the deleteApplicationCacheFiles method
+            val deleteMethod = pmClass.methods.find { method ->
+                method.name == "deleteApplicationCacheFiles" && 
+                method.parameterTypes.size == 2
+            }
+            
+            if (deleteMethod == null) {
+                Log.w(tag, "deleteApplicationCacheFiles method not found")
+                return@withContext ClearResult.Failure("method not available")
+            }
+            
+            val before = scanner.cacheSizeForPackage(info.packageName)
+            val latch = CountDownLatch(1)
+            val successHolder = booleanArrayOf(false)
+            
+            // Get the IPackageDataObserver class via reflection
+            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
+            
+            // Create a dynamic proxy for the observer
+            val observer = Proxy.newProxyInstance(
+                observerClass.classLoader,
+                arrayOf(observerClass),
+                InvocationHandler { _, method, args ->
+                    if (method.name == "onRemoveCompleted" && args != null && args.size == 2) {
+                        successHolder[0] = args[1] as? Boolean ?: false
+                        latch.countDown()
+                    }
+                    null
+                }
+            )
+            
+            // Invoke deleteApplicationCacheFiles
+            deleteMethod.invoke(pm, info.packageName, observer)
+            
+            // Wait up to 5 seconds for completion
+            val completed = latch.await(5, TimeUnit.SECONDS)
+            
+            if (completed && successHolder[0]) {
+                val after = scanner.cacheSizeForPackage(info.packageName)
+                val freed = (before - after).coerceAtLeast(0L)
+                Log.d(tag, "Direct cache clear success for ${info.packageName}, freed: $freed")
+                return@withContext ClearResult.Success(freed)
+            } else {
+                Log.w(tag, "Direct cache clear failed or timed out for ${info.packageName}")
+                // Even if observer reports failure, check if cache was actually cleared
+                val after = scanner.cacheSizeForPackage(info.packageName)
+                if (after < before) {
+                    val freed = (before - after).coerceAtLeast(0L)
+                    return@withContext ClearResult.Success(freed)
+                }
+                return@withContext ClearResult.Failure("observer reported failure or timed out")
+            }
+        } catch (e: ClassNotFoundException) {
+            Log.w(tag, "IPackageDataObserver class not available", e)
+            return@withContext ClearResult.Failure("observer class not available")
+        } catch (e: SecurityException) {
+            Log.w(tag, "deleteApplicationCacheFiles permission denied", e)
+            return@withContext ClearResult.Failure("permission denied")
+        } catch (e: IllegalAccessException) {
+            Log.w(tag, "deleteApplicationCacheFiles access denied", e)
+            return@withContext ClearResult.Failure("access denied")
+        } catch (t: Throwable) {
+            Log.w(tag, "Direct cache clear failed for ${info.packageName}", t)
+            return@withContext ClearResult.Failure(t.message ?: "unknown")
+        }
+    }
 
     /**
      * Root mode: best-effort direct file removal of the app's cache dir + subdirs.
@@ -108,9 +189,8 @@ class ClearEngine(
      * Flow:
      *  1. Open ACTION_APPLICATION_DETAILS_SETTINGS for the target package.
      *  2. Wait for AccessibilityService to detect the App Info page.
-     *  3. Service scrolls & finds the "Clear cache" button (id com.android.settings:id/button2
-     *     in stock AOSP, fallback text match).
-     *  4. Service taps the button.
+     *  3. Service finds the "Clear cache" button (NOT "Clear data") and taps it.
+     *  4. Service navigates back to prepare for the next app.
      *  5. Returns true if the click was performed.
      */
     suspend fun clearCacheNoRoot(info: AppCacheInfo): ClearResult = withContext(Dispatchers.IO) {
@@ -128,6 +208,9 @@ class ClearEngine(
     /**
      * Convenience: run a clear over a list using the chosen strategy.
      * Reports progress through [onProgress].
+     * 
+     * For NoRoot strategy, it first tries the direct API method (faster, no navigation),
+     * and falls back to accessibility service only if direct API fails.
      */
     suspend fun clearAll(
         items: List<AppCacheInfo>,
@@ -138,13 +221,24 @@ class ClearEngine(
         for ((i, item) in items.withIndex()) {
             val result = when (strategy) {
                 ClearStrategy.Root -> clearCacheRoot(item)
-                ClearStrategy.NoRoot -> clearCacheNoRoot(item)
+                ClearStrategy.NoRoot -> {
+                    // Try direct API first (faster, no UI navigation)
+                    val directResult = clearCacheDirect(item)
+                    if (directResult is ClearResult.Success) {
+                        directResult
+                    } else {
+                        // Fall back to accessibility service
+                        clearCacheNoRoot(item)
+                    }
+                }
+                ClearStrategy.DirectApi -> clearCacheDirect(item)
             }
             onProgress(i + 1, total, item, result)
             if (strategy == ClearStrategy.NoRoot) {
-                // Give Android time to navigate to next app
-                delay(350L)
+                // Small delay between apps for accessibility service to settle
+                delay(200L)
             }
         }
     }
 }
+

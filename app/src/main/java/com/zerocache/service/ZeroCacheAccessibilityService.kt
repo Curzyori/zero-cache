@@ -1,7 +1,9 @@
 package com.zerocache.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Path
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -19,11 +21,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * No-Root automation. Flow:
- *  1. Caller (ViewModel/ClearEngine) calls openAppInfoAndClearCache(pkg).
+ *  1. Caller (ClearEngine) calls openAppInfoAndClearCache(pkg).
  *  2. Service launches ACTION_APPLICATION_DETAILS_SETTINGS for that package.
  *  3. Service watches the AccessibilityEvent stream and, once the Settings page
- *     is on screen, finds the "Clear cache" button by id/text and taps it.
- *  4. Returns success once the click is dispatched.
+ *     is on screen, finds the "Clear cache" button (NOT "Clear data") and taps it.
+ *  4. Navigates back to the previous screen after clearing.
+ *  5. Returns success once the click is dispatched.
  *
  * The class also exposes a static [instance] for the engine to talk to without
  * needing a binder round-trip.
@@ -43,8 +46,13 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
             "com.android.settings:id/button2",
             "com.android.settings:id/clear_cache_button"
         )
+        // Cache-only text patterns (avoid "clear data" / "hapus data" to prevent accidental data wipe)
         private val CLEAR_CACHE_TEXTS = listOf(
-            "clear cache", "hapus cache", "hapus data", "clear data"
+            "clear cache", "hapus cache", "cache", "tembolok"
+        )
+        // Text patterns that indicate "Clear Data" (dangerous - must be avoided)
+        private val CLEAR_DATA_TEXTS = listOf(
+            "clear data", "hapus data", "clear storage", "hapus penyimpanan"
         )
     }
 
@@ -84,7 +92,7 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
             Log.w(TAG, "another package already in flight: $current, aborting")
             return false
         }
-        return kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+        return kotlinx.coroutines.withTimeoutOrNull(20_000L) {
             kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { cont ->
                 pendingResult.set { ok -> if (cont.isActive) cont.resumeWith(Result.success(ok)) }
                 launchAppInfo(packageName)
@@ -122,7 +130,13 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
         try {
             if (tryFindAndClickClearCache(root)) {
                 Log.d(TAG, "Clear cache tapped for ${pendingPackage.get()}")
-                pendingResult.get()?.invoke(true)
+                // Wait a bit for the cache to be cleared, then navigate back
+                scope.launch {
+                    delay(500L)
+                    navigateBack()
+                    delay(300L)
+                    pendingResult.get()?.invoke(true)
+                }
             }
         } finally {
             root.recycle()
@@ -139,11 +153,9 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
             val nodes = root.findAccessibilityNodeInfosByViewId(id)
             for (n in nodes) {
                 if (n.isClickable && n.isEnabled) {
-                    // Make sure the visible text matches what we expect
                     val text = (n.text ?: n.contentDescription)?.toString()?.lowercase().orEmpty()
-                    val looksRight = CLEAR_CACHE_TEXTS.any { it in text } ||
-                        text.contains("cache") || text.contains("data")
-                    if (looksRight) {
+                    // Make sure it's a cache button, NOT a data button
+                    if (isCacheOnlyButton(text)) {
                         return performClick(n)
                     }
                 }
@@ -154,11 +166,27 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
         return clickByText(root, CLEAR_CACHE_TEXTS)
     }
 
+    /**
+     * Returns true if the text looks like a "Clear cache" button (not "Clear data").
+     */
+    private fun isCacheOnlyButton(text: String): Boolean {
+        val lower = text.lowercase()
+        // Reject if it looks like "Clear data" / "Hapus data"
+        if (CLEAR_DATA_TEXTS.any { it in lower }) return false
+        // Accept if it contains cache-related keywords
+        return CLEAR_CACHE_TEXTS.any { it in lower }
+    }
+
     private fun clickByText(root: AccessibilityNodeInfo, needles: List<String>): Boolean {
         val all = ArrayList<AccessibilityNodeInfo>(64)
         collectClickableNodes(root, all)
         for (n in all) {
             val text = (n.text ?: n.contentDescription)?.toString()?.lowercase().orEmpty()
+            // Skip if it looks like "Clear data"
+            if (CLEAR_DATA_TEXTS.any { it in text }) {
+                n.recycle()
+                continue
+            }
             if (needles.any { it in text }) {
                 val ok = performClick(n)
                 recycleAll(all)
@@ -196,6 +224,30 @@ class ZeroCacheAccessibilityService : AccessibilityService() {
         } catch (t: Throwable) {
             Log.w(TAG, "performClick failed", t)
             false
+        }
+    }
+
+    /**
+     * Navigate back to the previous screen (so the next app can be processed).
+     */
+    private fun navigateBack() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                // Use gesture-based back navigation (API 24+)
+                val path = Path().apply {
+                    moveTo(100f, 100f)
+                    lineTo(100f, 100f)
+                }
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, 1))
+                    .build()
+                // Use ACTION_BACK if available
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            } else {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "navigateBack failed", t)
         }
     }
 }
