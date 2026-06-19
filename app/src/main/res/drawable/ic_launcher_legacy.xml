@@ -10,44 +10,15 @@
         android:pathData="M0,0 L108,0 L108,108 L0,108 Z"
         android:fillColor="#5645D4" />
 
-    <!-- ZeroCache Mark: Stylized "0" with cache sweep arrow -->
+    <!-- Clean Outer Zero Ring -->
     <path
-        android:pathData="M54,30
-                          m-22,0
-                          a22,22 0 1,0 44,0
-                          a22,22 0 1,0 -44,0
-                          M54,30
-                          m-14,0
-                          a14,14 0 1,1 28,0
-                          a14,14 0 1,1 -28,0"
-        android:fillColor="#FFFFFF"
-        android:fillType="evenOdd" />
-
-    <path
-        android:pathData="M54,30 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"
-        android:fillColor="#5645D4" />
-
-    <path
-        android:pathData="M76,30 L82,30 M79,27 L82,30 L79,33"
+        android:pathData="M 54, 54 m -34, 0 a 34,34 0 1,1 68,0 a 34,34 0 1,1 -68,0"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:strokeWidth="6" />
 
+    <!-- Clean Central Lightning Bolt -->
     <path
-        android:pathData="M30,68 L78,68"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round" />
-
-    <path
-        android:pathData="M30,68 L68,68"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round" />
-
-    <path
-        android:pathData="M68,68 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"
+        android:pathData="M58,28 L42,54 H54 L48,80 L66,52 H54 Z"
         android:fillColor="#FFFFFF" />
 
 </vector>
