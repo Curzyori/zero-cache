@@ -3,7 +3,6 @@ package com.zerocache.data
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import com.zerocache.service.ZeroCacheAccessibilityService
 import com.zerocache.util.RootChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -30,7 +29,6 @@ sealed class ClearResult {
  */
 sealed class ClearStrategy {
     data object Root : ClearStrategy()
-    data object NoRoot : ClearStrategy()
     data object DirectApi : ClearStrategy()  // Hidden API via reflection
 }
 
@@ -184,33 +182,11 @@ class ClearEngine(
     }
 
     /**
-     * No-Root mode: rely on AccessibilityService to navigate to App Info → Storage → Clear cache.
-     *
-     * Flow:
-     *  1. Open ACTION_APPLICATION_DETAILS_SETTINGS for the target package.
-     *  2. Wait for AccessibilityService to detect the App Info page.
-     *  3. Service finds the "Clear cache" button (NOT "Clear data") and taps it.
-     *  4. Service navigates back to prepare for the next app.
-     *  5. Returns true if the click was performed.
-     */
-    suspend fun clearCacheNoRoot(info: AppCacheInfo): ClearResult = withContext(Dispatchers.IO) {
-        val service = ZeroCacheAccessibilityService.instance
-            ?: return@withContext ClearResult.Failure("accessibility service not running")
-        return@withContext try {
-            val ok = service.openAppInfoAndClearCache(info.packageName)
-            if (ok) ClearResult.Success(info.cacheSizeBytes) else ClearResult.Failure("tap failed")
-        } catch (t: Throwable) {
-            Log.w(tag, "clearCacheNoRoot failed", t)
-            ClearResult.Failure(t.message ?: "unknown")
-        }
-    }
-
-    /**
-     * Convenience: run a clear over a list using the chosen strategy.
+     * Convenience: run a clear over a list using the direct API (no UI navigation).
      * Reports progress through [onProgress].
-     * 
-     * For NoRoot strategy, it first tries the direct API method (faster, no navigation),
-     * and falls back to accessibility service only if direct API fails.
+     *
+     * Uses the hidden PackageManager.deleteApplicationCacheFiles API via reflection.
+     * Apps that fail are simply skipped — no Settings page is ever opened.
      */
     suspend fun clearAll(
         items: List<AppCacheInfo>,
@@ -221,23 +197,9 @@ class ClearEngine(
         for ((i, item) in items.withIndex()) {
             val result = when (strategy) {
                 ClearStrategy.Root -> clearCacheRoot(item)
-                ClearStrategy.NoRoot -> {
-                    // Try direct API first (faster, no UI navigation)
-                    val directResult = clearCacheDirect(item)
-                    if (directResult is ClearResult.Success) {
-                        directResult
-                    } else {
-                        // Fall back to accessibility service
-                        clearCacheNoRoot(item)
-                    }
-                }
                 ClearStrategy.DirectApi -> clearCacheDirect(item)
             }
             onProgress(i + 1, total, item, result)
-            if (strategy == ClearStrategy.NoRoot) {
-                // Small delay between apps for accessibility service to settle
-                delay(200L)
-            }
         }
     }
 }

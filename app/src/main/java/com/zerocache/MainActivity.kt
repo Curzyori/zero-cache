@@ -34,9 +34,6 @@ class MainActivity : ComponentActivity() {
                             LocaleManager.setLanguage(this, newLang)
                             recreate()
                         },
-                        onOpenAccessibilitySettings = {
-                            com.zerocache.util.SettingsOpener.openAccessibilitySettings(this)
-                        },
                         onOpenUsageSettings = {
                             com.zerocache.util.SettingsOpener.openUsageAccessSettings(this)
                         }

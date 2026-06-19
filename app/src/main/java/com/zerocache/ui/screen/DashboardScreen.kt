@@ -38,7 +38,6 @@ import kotlinx.coroutines.launch
 import com.zerocache.R
 import com.zerocache.data.AppCacheInfo
 import com.zerocache.data.ClearStrategy
-import com.zerocache.service.ZeroCacheAccessibilityService
 import com.zerocache.ui.DashboardViewModel
 import com.zerocache.util.LocaleManager
 import com.zerocache.util.SizeFormatter
@@ -52,14 +51,12 @@ import com.zerocache.util.SizeFormatter
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     onLanguageToggle: (String) -> Unit,
-    onOpenAccessibilitySettings: () -> Unit,
     onOpenUsageSettings: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
-    val errorNoAccessibility = stringResource(R.string.err_no_accessibility)
     val errorNothingToClear = stringResource(R.string.list_empty)
     val errorClearFailed = stringResource(R.string.err_clear_failed, "")
     val progressIdle = stringResource(R.string.progress_idle)
@@ -130,11 +127,9 @@ fun DashboardScreen(
             // Permission / mode card
             ModeAndPermissionsCard(
                 isRooted = state.isRooted,
-                hasAccessibility = state.hasAccessibility,
                 hasUsageStats = state.hasUsageStats,
                 strategy = state.strategy,
                 onToggleStrategy = { viewModel.toggleStrategy() },
-                onOpenAccessibility = onOpenAccessibilitySettings,
                 onOpenUsage = onOpenUsageSettings
             )
 
@@ -151,7 +146,7 @@ fun DashboardScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = { viewModel.refresh(state.hasAccessibility) }) {
+                TextButton(onClick = { viewModel.refresh() }) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
                         contentDescription = null,
@@ -222,7 +217,6 @@ fun DashboardScreen(
     state.message?.let { msgKey ->
         LaunchedEffect(msgKey) {
             val text = when (msgKey) {
-                "accessibility_required" -> errorNoAccessibility
                 "nothing_to_clear" -> errorNothingToClear
                 "clear_failed" -> errorClearFailed
                 "done" -> progressIdle
@@ -300,11 +294,9 @@ private fun StatColumn(label: String, value: String, modifier: Modifier = Modifi
 @Composable
 private fun ModeAndPermissionsCard(
     isRooted: Boolean,
-    hasAccessibility: Boolean,
     hasUsageStats: Boolean,
     strategy: ClearStrategy,
     onToggleStrategy: () -> Unit,
-    onOpenAccessibility: () -> Unit,
     onOpenUsage: () -> Unit
 ) {
     Card(
@@ -324,8 +316,8 @@ private fun ModeAndPermissionsCard(
                 )
                 ModeChip(
                     label = stringResource(R.string.mode_no_root),
-                    active = strategy == ClearStrategy.NoRoot,
-                    onClick = { if (strategy != ClearStrategy.NoRoot) onToggleStrategy() }
+                    active = strategy == ClearStrategy.DirectApi,
+                    onClick = { if (strategy != ClearStrategy.DirectApi) onToggleStrategy() }
                 )
                 Spacer(Modifier.width(6.dp))
                 ModeChip(
@@ -347,14 +339,6 @@ private fun ModeAndPermissionsCard(
             )
             Spacer(Modifier.height(12.dp))
             // Permission rows
-            if (strategy == ClearStrategy.NoRoot) {
-                PermissionRow(
-                    label = stringResource(R.string.perm_accessibility_title),
-                    granted = hasAccessibility,
-                    actionLabel = stringResource(R.string.perm_accessibility_btn),
-                    onClick = onOpenAccessibility
-                )
-            }
             PermissionRow(
                 label = stringResource(R.string.perm_usage_title),
                 granted = hasUsageStats,

@@ -26,9 +26,8 @@ data class DashboardUiState(
     val freedBytes: Long = 0L,
     val isClearing: Boolean = false,
     val isRooted: Boolean = false,
-    val hasAccessibility: Boolean = false,
     val hasUsageStats: Boolean = false,
-    val strategy: ClearStrategy = ClearStrategy.NoRoot,
+    val strategy: ClearStrategy = ClearStrategy.DirectApi,
     val message: String? = null,
     val progressCurrent: Int = 0,
     val progressTotal: Int = 0,
@@ -46,8 +45,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private val _state = MutableStateFlow(
         DashboardUiState(
             isRooted = RootChecker.isRooted(),
-            hasUsageStats = scanner.hasUsageStatsPermission(),
-            hasAccessibility = com.zerocache.service.ZeroCacheAccessibilityService.instance != null
+            hasUsageStats = scanner.hasUsageStatsPermission()
         )
     )
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
@@ -55,24 +53,22 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         val isRooted = RootChecker.isRooted()
         val hasUsage = scanner.hasUsageStatsPermission()
-        val hasAccess = com.zerocache.service.ZeroCacheAccessibilityService.instance != null
         _state.update {
             it.copy(
                 isRooted = isRooted,
                 hasUsageStats = hasUsage,
-                hasAccessibility = hasAccess,
-                strategy = if (isRooted) ClearStrategy.Root else ClearStrategy.NoRoot
+                strategy = if (isRooted) ClearStrategy.Root else ClearStrategy.DirectApi
             )
         }
         if (hasUsage) {
-            refresh(hasAccess)
+            refresh()
         }
     }
 
-    fun refresh(hasAccessibility: Boolean) {
+    fun refresh() {
         viewModelScope.launch {
             val hasUsageStats = scanner.hasUsageStatsPermission()
-            _state.update { it.copy(isLoading = true, message = null, hasUsageStats = hasUsageStats, hasAccessibility = hasAccessibility) }
+            _state.update { it.copy(isLoading = true, message = null, hasUsageStats = hasUsageStats) }
             val apps = if (hasUsageStats) {
                 withContext(Dispatchers.IO) { scanner.scan() }
             } else {
@@ -91,18 +87,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun checkPermissions() {
         val hasUsage = scanner.hasUsageStatsPermission()
-        val hasAccess = com.zerocache.service.ZeroCacheAccessibilityService.instance != null
         val current = _state.value
 
-        if (hasUsage != current.hasUsageStats || hasAccess != current.hasAccessibility) {
+        if (hasUsage != current.hasUsageStats) {
             _state.update {
                 it.copy(
-                    hasUsageStats = hasUsage,
-                    hasAccessibility = hasAccess
+                    hasUsageStats = hasUsage
                 )
             }
             if (hasUsage && (!current.hasUsageStats || current.apps.isEmpty())) {
-                refresh(hasAccess)
+                refresh()
             } else if (!hasUsage && current.apps.isNotEmpty()) {
                 _state.update {
                     it.copy(
@@ -118,9 +112,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         _state.update {
             it.copy(
                 strategy = when (it.strategy) {
-                    ClearStrategy.NoRoot -> ClearStrategy.Root
-                    ClearStrategy.Root -> ClearStrategy.NoRoot
-                    ClearStrategy.DirectApi -> ClearStrategy.NoRoot
+                    ClearStrategy.DirectApi -> if (it.isRooted) ClearStrategy.Root else ClearStrategy.DirectApi
+                    ClearStrategy.Root -> ClearStrategy.DirectApi
                 }
             )
         }
@@ -129,10 +122,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun requestClearAll() {
         val current = _state.value
         if (current.apps.isEmpty()) return
-        if (current.strategy == ClearStrategy.NoRoot && !current.hasAccessibility) {
-            _state.update { it.copy(message = "accessibility_required") }
-            return
-        }
         _state.update { it.copy(showConfirm = true) }
     }
 
@@ -192,15 +181,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             _state.update { it.copy(isClearing = true) }
             val result = when (_state.value.strategy) {
                 ClearStrategy.Root -> engine.clearCacheRoot(item)
-                ClearStrategy.NoRoot -> {
-                    // Try direct API first, fallback to accessibility
-                    val directResult = engine.clearCacheDirect(item)
-                    if (directResult is ClearResult.Success) {
-                        directResult
-                    } else {
-                        engine.clearCacheNoRoot(item)
-                    }
-                }
                 ClearStrategy.DirectApi -> engine.clearCacheDirect(item)
             }
             val newApps = withContext(Dispatchers.IO) { scanner.scan() }
