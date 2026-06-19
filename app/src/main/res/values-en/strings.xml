@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App identity -->
+    <string name="app_name">ZeroCache</string>
+
+    <!-- Accessibility service -->
+    <string name="accessibility_service_name">ZeroCache Auto-Clear</string>
+    <string name="accessibility_service_description">Automatically opens App Info and taps the Clear Cache button to clean app cache without root.</string>
+
+    <!-- Dashboard header -->
+    <string name="dashboard_title">ZeroCache</string>
+    <string name="dashboard_subtitle">One-tap cache cleaner</string>
+    <string name="dashboard_total_cache">Total cache</string>
+    <string name="dashboard_apps_found">Apps detected</string>
+    <string name="dashboard_total_freed">Freed up</string>
+    <string name="dashboard_scan">Rescan</string>
+    <string name="dashboard_scanning">Scanning…</string>
+
+    <!-- Mode status -->
+    <string name="mode_label">Mode</string>
+    <string name="mode_no_root">No Root</string>
+    <string name="mode_root">Root</string>
+    <string name="mode_no_root_desc">AccessibilityService</string>
+    <string name="mode_root_desc">Full pm clear access</string>
+
+    <!-- Permission prompts -->
+    <string name="perm_accessibility_title">Enable Accessibility</string>
+    <string name="perm_accessibility_desc">To clear cache without root, enable the ZeroCache service in Settings → Accessibility. No root required.</string>
+    <string name="perm_accessibility_btn">Open Settings</string>
+    <string name="perm_usage_title">Usage Stats Permission</string>
+    <string name="perm_usage_desc">To read each app\'s cache size, grant Usage Access in Settings → Apps → Special access → Usage access.</string>
+    <string name="perm_usage_btn">Open Settings</string>
+    <string name="perm_usage_required">Please grant Usage Stats permission first to view and scan app cache.</string>
+    <string name="perm_root_title">Root Check</string>
+    <string name="perm_root_desc">This device is detected to have root access. Enable Root mode for faster pm clear commands.</string>
+    <string name="perm_root_test">Test Root</string>
+    <string name="perm_root_grant">Root detected</string>
+    <string name="perm_root_denied">Root not available</string>
+
+    <!-- List -->
+    <string name="list_title">Cache per App</string>
+    <string name="list_empty">No cache detected. Tap Rescan.</string>
+    <string name="list_empty_loading">Scanning cache…</string>
+    <string name="list_app_system">System</string>
+    <string name="list_app_user">User</string>
+    <string name="list_app_size_format">%1$s</string>
+
+    <!-- Actions -->
+    <string name="action_clear_all">Clear All Cache</string>
+    <string name="action_clear_one">Clear</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_grant">Grant</string>
+    <string name="action_dismiss">Dismiss</string>
+
+    <!-- Confirm dialog -->
+    <string name="confirm_clear_title">Clear all cache?</string>
+    <string name="confirm_clear_msg">Will open %1$d App Info pages and tap the Clear Cache button one by one. This action cannot be undone.</string>
+    <string name="confirm_root_clear_msg">Will run pm clear on %1$d apps with root access. Takes a few seconds.</string>
+
+    <!-- Progress -->
+    <string name="progress_clearing">Clearing %1$d / %2$d</string>
+    <string name="progress_done">Done. %1$s freed from %2$d apps.</string>
+    <string name="progress_failed">%1$d apps failed to clear.</string>
+    <string name="progress_idle">Ready</string>
+
+    <!-- Errors -->
+    <string name="err_no_accessibility">Accessibility not enabled. Cannot clear cache.</string>
+    <string name="err_no_root">Root not available. Switch to No-Root mode.</string>
+    <string name="err_open_app_info">Cannot open App Info for %1$s</string>
+    <string name="err_clear_failed">Failed to clear cache for %1$s</string>
+    <string name="err_scan_failed">Scan failed: %1$s</string>
+
+    <!-- Language -->
+    <string name="lang_id">Bahasa Indonesia</string>
+    <string name="lang_en">English</string>
+    <string name="lang_toggle_cd">Toggle language</string>
+
+    <!-- Misc -->
+    <string name="hint_first_run">Tap the Clear button to start. The first time, it will open Accessibility Settings.</string>
+    <string name="hint_root_first_run">Root detected. Root mode is faster, no auto-tap needed.</string>
+    <string name="size_bytes">%1$d B</string>
+    <string name="size_kb">%1$.1f KB</string>
+    <string name="size_mb">%1$.1f MB</string>
+    <string name="size_gb">%1$.2f GB</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_credits">ZeroCache v%1$s · %2$s</string>
+</resources>

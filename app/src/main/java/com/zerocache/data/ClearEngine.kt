@@ -1,0 +1,150 @@
+package com.zerocache.data
+
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+import com.zerocache.service.ZeroCacheAccessibilityService
+import com.zerocache.util.RootChecker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.io.File
+
+/**
+ * Outcome of a single clear-cache attempt.
+ */
+sealed class ClearResult {
+    data class Success(val freedBytes: Long) : ClearResult()
+    data class Failure(val reason: String) : ClearResult()
+    data object Skipped : ClearResult()
+}
+
+/**
+ * Strategy for clearing cache. The ViewModel picks the right one based on device capability
+ * + user preference.
+ */
+sealed class ClearStrategy {
+    data object Root : ClearStrategy()
+    data object NoRoot : ClearStrategy()
+}
+
+class ClearEngine(
+    private val context: Context,
+    private val scanner: AppCacheScanner
+) {
+    private val tag = "ClearEngine"
+
+    /**
+     * Root mode: best-effort direct file removal of the app's cache dir + subdirs.
+     * Uses `su` to elevate when needed.
+     */
+    suspend fun clearCacheRoot(info: AppCacheInfo): ClearResult = withContext(Dispatchers.IO) {
+        if (!RootChecker.isRooted()) {
+            return@withContext ClearResult.Failure("root not available")
+        }
+        val pkg = info.packageName
+        val roots = listOf(
+            File("/data/data/$pkg/cache"),
+            File("/sdcard/Android/data/$pkg/cache")
+        )
+        var freed = 0L
+        var hadError = false
+        for (root in roots) {
+            if (!root.exists()) continue
+            val before = scanner.cacheSizeForPackage(pkg)
+            val ok = try {
+                if (root.canWrite()) {
+                    deleteRecursive(root)
+                } else {
+                    shellDelete(root.absolutePath)
+                }
+            } catch (t: Throwable) {
+                Log.w(tag, "delete failed for ${root.absolutePath}", t)
+                hadError = true
+                false
+            }
+            if (ok) {
+                val after = scanner.cacheSizeForPackage(pkg)
+                freed += (before - after).coerceAtLeast(0L)
+            }
+        }
+        // After deletion, also try pm trim cache (API 26+)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val pm = context.packageManager
+                // PackageManager.freeStorage is deprecated and requires ALL_FILES, skip.
+                // We rely on filesystem deletion instead.
+            }
+        } catch (_: Throwable) {}
+        if (hadError && freed == 0L) ClearResult.Failure("delete failed") else ClearResult.Success(freed)
+    }
+
+    private fun deleteRecursive(file: File): Boolean {
+        if (!file.exists()) return true
+        if (file.isFile) return file.delete()
+        val children = file.listFiles() ?: return true
+        var ok = true
+        for (child in children) ok = deleteRecursive(child) && ok
+        return file.delete() && ok
+    }
+
+    private fun shellDelete(path: String): Boolean {
+        return try {
+            // Sanitize: reject paths with shell metacharacters
+            val safe = path.replace(Regex("[;&|`\$\\\\\"'<>]"), "")
+            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "rm -rf $safe"))
+            proc.waitFor() == 0
+        } catch (t: Throwable) {
+            Log.w(tag, "shellDelete failed for $path", t)
+            false
+        }
+    }
+
+    /**
+     * No-Root mode: rely on AccessibilityService to navigate to App Info → Storage → Clear cache.
+     *
+     * Flow:
+     *  1. Open ACTION_APPLICATION_DETAILS_SETTINGS for the target package.
+     *  2. Wait for AccessibilityService to detect the App Info page.
+     *  3. Service scrolls & finds the "Clear cache" button (id com.android.settings:id/button2
+     *     in stock AOSP, fallback text match).
+     *  4. Service taps the button.
+     *  5. Returns true if the click was performed.
+     */
+    suspend fun clearCacheNoRoot(info: AppCacheInfo): ClearResult = withContext(Dispatchers.IO) {
+        val service = ZeroCacheAccessibilityService.instance
+            ?: return@withContext ClearResult.Failure("accessibility service not running")
+        return@withContext try {
+            val ok = service.openAppInfoAndClearCache(info.packageName)
+            if (ok) ClearResult.Success(info.cacheSizeBytes) else ClearResult.Failure("tap failed")
+        } catch (t: Throwable) {
+            Log.w(tag, "clearCacheNoRoot failed", t)
+            ClearResult.Failure(t.message ?: "unknown")
+        }
+    }
+
+    /**
+     * Convenience: run a clear over a list using the chosen strategy.
+     * Reports progress through [onProgress].
+     */
+    suspend fun clearAll(
+        items: List<AppCacheInfo>,
+        strategy: ClearStrategy,
+        onProgress: suspend (current: Int, total: Int, item: AppCacheInfo, result: ClearResult) -> Unit
+    ) {
+        val total = items.size
+        for ((i, item) in items.withIndex()) {
+            val result = when (strategy) {
+                ClearStrategy.Root -> clearCacheRoot(item)
+                ClearStrategy.NoRoot -> clearCacheNoRoot(item)
+            }
+            onProgress(i + 1, total, item, result)
+            if (strategy == ClearStrategy.NoRoot) {
+                // Give Android time to navigate to next app
+                delay(350L)
+            }
+        }
+    }
+}

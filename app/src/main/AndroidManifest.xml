@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Query installed apps (Android 11+ requires explicit query) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Clear cache for installed apps (since API 26) - signature permission, not granted at runtime -->
+    <uses-permission android:name="android.permission.DELETE_CACHE_FILES"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- For getting cache size info (API 26+) - signature permission -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- App usage stats for proper cache size access on Android 8+ -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- For root mode: not a real permission, just kept for clarity -->
+    <!-- Root mode uses Runtime.exec("su") at runtime; no manifest permission needed -->
+
+    <queries>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ZeroCache"
+        android:requestLegacyExternalStorage="false"
+        tools:targetApi="35">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|locale|layoutDirection|uiMode"
+            android:theme="@style/Theme.ZeroCache">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".service.ZeroCacheAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/zero_cache_accessibility_service" />
+        </service>
+
+    </application>
+
+</manifest>

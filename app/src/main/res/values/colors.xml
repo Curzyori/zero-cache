@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notion-inspired clean palette -->
+    <color name="zc_primary">#5645D4</color>
+    <color name="zc_primary_pressed">#4534B3</color>
+    <color name="zc_primary_deep">#3A2A99</color>
+    <color name="zc_on_primary">#FFFFFF</color>
+
+    <color name="zc_brand_navy">#0A1530</color>
+
+    <color name="zc_canvas">#FFFFFF</color>
+    <color name="zc_surface">#F6F5F4</color>
+    <color name="zc_surface_soft">#FAFAF9</color>
+    <color name="zc_surface_dark">#181715</color>
+
+    <color name="zc_hairline">#E5E3DF</color>
+    <color name="zc_hairline_soft">#EDE9E4</color>
+    <color name="zc_hairline_strong">#C8C4BE</color>
+
+    <color name="zc_ink">#1A1A1A</color>
+    <color name="zc_charcoal">#37352F</color>
+    <color name="zc_slate">#5D5B54</color>
+    <color name="zc_steel">#787671</color>
+    <color name="zc_muted">#BBB8B1</color>
+
+    <color name="zc_success">#1AAE39</color>
+    <color name="zc_warning">#DD5B00</color>
+    <color name="zc_error">#E03131</color>
+
+    <color name="zc_tint_peach">#FFE8D4</color>
+    <color name="zc_tint_mint">#D9F3E1</color>
+    <color name="zc_tint_lavender">#E6E0F5</color>
+    <color name="zc_tint_sky">#DCECFA</color>
+
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#5645D4</color>
+</resources>
